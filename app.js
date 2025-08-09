@@ -54,11 +54,12 @@ function userflash(btn){
 function checkcolor(idx){
     if(userseq[idx]===gameseq[idx]){
         if(userseq.length == gameseq.length){
-            setTimeout(levelup(), 1000);
+            setTimeout(levelup, 1000);
         }
     }
     else{
         if(level > highscore){
+            highscore = level;
             h3.innerText = `HIGHEST SCORE : ${level}`;
         }
         h2.innerHTML=`Game Over !! Your Score is <b>${level}</b><br>Please enter any key to restart`;
