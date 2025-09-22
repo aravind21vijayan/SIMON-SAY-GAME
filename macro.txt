@@ -1,0 +1,179 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX 50
+#define MAX_ARGS 10
+
+// Structures for tables
+typedef struct {
+    char name[20];
+    int start;
+    int end;
+    int argcount;
+    char formal[MAX_ARGS][20];
+} Namtab;
+
+Namtab namtab[MAX];
+char deftab[MAX][100];   // Stores macro body
+int namcount = 0, defcount = 0;
+
+// Store all macro calls arguments
+char argtab_all[MAX][MAX_ARGS][20]; // MAX macro calls
+int argcount_all[MAX];
+int callcount = 0;
+
+// Function to check if line is a macro call
+int isMacroCall(char *word) {
+    for (int i = 0; i < namcount; i++) {
+        if (strcmp(word, namtab[i].name) == 0)
+            return i; // return index of macro in NAMTAB
+    }
+    return -1;
+}
+
+// Function to replace formal parameters in a line with placeholders #1, #2, ...
+void replaceFormalWithPlaceholder(char *line, Namtab *macro) {
+    char temp[100];
+    strcpy(temp, line);
+    for (int i = 0; i < macro->argcount; i++) {
+        char *pos;
+        while ((pos = strstr(temp, macro->formal[i])) != NULL) {
+            char newLine[100];
+            *pos = '\0';
+            sprintf(newLine, "%s#%d%s", temp, i + 1, pos + strlen(macro->formal[i]));
+            strcpy(temp, newLine);
+        }
+    }
+    strcpy(deftab[defcount++], temp);
+}
+
+int main() {
+    FILE *fin, *fout, *fnam, *fdeft, *farg;
+    char line[200], word[20];
+    int idx;
+
+    fin = fopen("input.txt", "r");
+    fout = fopen("output.txt", "w");
+    fnam = fopen("namtab.txt", "w");
+    fdeft = fopen("deftab.txt", "w");
+    farg = fopen("argtab.txt", "w");
+
+    if (!fin || !fout || !fnam || !fdeft || !farg) {
+        printf("Error opening file!\n");
+        exit(1);
+    }
+
+    while (fgets(line, sizeof(line), fin)) {
+        sscanf(line, "%s", word);
+
+        // Macro Definition
+        if (strcmp(word, "MACRO") == 0) {
+            fgets(line, sizeof(line), fin);
+
+            // Extract macro name and formal arguments
+            char *token = strtok(line, " \t\n,");
+            strcpy(namtab[namcount].name, token);
+            namtab[namcount].start = defcount;
+
+            int argc = 0;
+            while ((token = strtok(NULL, " \t\n,")) != NULL) {
+                strcpy(namtab[namcount].formal[argc++], token);
+            }
+            namtab[namcount].argcount = argc;
+
+            // Read macro body
+            while (fgets(line, sizeof(line), fin)) {
+                sscanf(line, "%s", word);
+                if (strcmp(word, "MEND") == 0)
+                    break;
+                replaceFormalWithPlaceholder(line, &namtab[namcount]);
+            }
+
+            namtab[namcount].end = defcount - 1;
+            namcount++;
+        }
+        // Macro Expansion
+        else if ((idx = isMacroCall(word)) != -1) {
+            int argc = 0;
+            char *token = strtok(line, " \t\n,");
+            token = strtok(NULL, " \t\n,"); // first actual argument
+            while (token != NULL) {
+                strcpy(argtab_all[callcount][argc++], token);
+                token = strtok(NULL, " \t\n,");
+            }
+            argcount_all[callcount] = argc;
+            callcount++;
+
+            // Expand macro body
+            for (int i = namtab[idx].start; i <= namtab[idx].end; i++) {
+                char temp[100];
+                strcpy(temp, deftab[i]);
+                for (int j = 0; j < namtab[idx].argcount; j++) {
+                    char *pos;
+                    while ((pos = strstr(temp, "#"))) {
+                        if (pos[1] - '0' == j + 1) {
+                            char expanded[100];
+                            *pos = '\0';
+                            sprintf(expanded, "%s%s%s", temp, argtab_all[callcount - 1][j], pos + 2);
+                            strcpy(temp, expanded);
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                fprintf(fout, "%s", temp);
+            }
+        }
+        // Normal instruction
+        else {
+            fprintf(fout, "%s", line);
+        }
+    }
+
+    // Write NAMTAB
+    for (int i = 0; i < namcount; i++) {
+        fprintf(fnam, "%s %d %d %d", namtab[i].name, namtab[i].start, namtab[i].end, namtab[i].argcount);
+        for (int j = 0; j < namtab[i].argcount; j++)
+            fprintf(fnam, " %s", namtab[i].formal[j]);
+        fprintf(fnam, "\n");
+    }
+
+    // Write DEFTAB
+    for (int i = 0; i < defcount; i++) {
+        fprintf(fdeft, "%s", deftab[i]);
+    }
+
+    // Write ARGTAB (all macro calls)
+    for (int c = 0; c < callcount; c++) {
+        for (int i = 0; i < argcount_all[c]; i++) {
+            fprintf(farg, "%s ", argtab_all[c][i]);
+        }
+        fprintf(farg, "\n");
+    }
+
+    fclose(fin);
+    fclose(fout);
+    fclose(fnam);
+    fclose(fdeft);
+    fclose(farg);
+
+    printf("Macro processing complete. Check output.txt, namtab.txt, deftab.txt, argtab.txt\n");
+    return 0;
+}
+
+
+
+
+
+MACRO
+INCR &ARG1
+ADD &ARG1, 1
+MEND
+
+START
+MOV A, 5
+INCR A
+MOV B, 10
+INCR B
+END
